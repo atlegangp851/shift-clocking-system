@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Admin - Shift Clocking System</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+        href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Space+Grotesk:wght@300;400;500;600;700&display=swap"
+        rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,500,0,0"
+        rel="stylesheet" />
+    <link rel="stylesheet" href="styles.css" />
+</head>
+
+<body>
+    <div class="bg-orb orb-1"></div>
+    <div class="bg-orb orb-2"></div>
+    <div class="bg-orb orb-3"></div>
+
+    <div class="app-shell">
+        <header class="topbar">
+            <div class="brand">
+                <div class="brand-mark">
+                    <span class="material-symbols-rounded">schedule</span>
+                </div>
+                <div>
+                    <div class="brand-title">ShiftManager</div>
+                    <div class="brand-subtitle">Admin Console</div>
+                </div>
+            </div>
+            <nav class="nav">
+                <button class="nav-btn" onclick="window.location.href='/'">
+                    <span class="material-symbols-rounded">arrow_back</span>
+                    Back to Clock
+                </button>
+            </nav>
+        </header>
+
+        <main class="content">
+            <section class="view" id="admin-view">
+                <!-- Admin Login -->
+                <div class="card" id="adminLoginCard">
+                    <div class="card-header">
+                        <div>
+                            <div class="card-title">Admin Access</div>
+                            <div class="card-subtitle">Authenticate to access management tools.</div>
+                        </div>
+                        <div class="status-chip">Secure</div>
+                    </div>
+                    <div class="card-body">
+                        <div class="field">
+                            <label class="field-label" for="adminUsername">Username</label>
+                            <div class="input-group">
+                                <span class="material-symbols-rounded">person</span>
+                                <input type="text" id="adminUsername" placeholder="Enter username" />
+                            </div>
+                        </div>
+                        <div class="field">
+                            <label class="field-label" for="adminPassword">Password</label>
+                            <div class="input-group">
+                                <span class="material-symbols-rounded">key</span>
+                                <input type="password" id="adminPassword" placeholder="Enter password" />
+                            </div>
+                        </div>
+                        <div class="panel panel-error" id="adminLoginError">
+                            <div class="panel-text" id="adminLoginErrorText"></div>
+                        </div>
+                        <div class="panel-actions">
+                            <button class="primary" id="adminLoginBtn">
+                                <span class="material-symbols-rounded">lock_open</span>
+                                Login
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Admin Dashboard -->
+                <div id="adminDashboard" hidden>
+                    <div class="admin-nav">
+                        <button class="admin-tab active" data-tab="employees">
+                            <span class="material-symbols-rounded">group</span> Employees
+                        </button>
+                        <button class="admin-tab" data-tab="attendance">
+                            <span class="material-symbols-rounded">calendar_month</span> Attendance
+                        </button>
+                        <button class="admin-tab" data-tab="stats">
+                            <span class="material-symbols-rounded">bar_chart</span> Stats
+                        </button>
+                        <button class="admin-tab" data-tab="admins">
+                            <span class="material-symbols-rounded">security</span> Admins
+                        </button>
+                        <button class="ghost admin-logout" id="adminLogoutBtn">
+                            <span class="material-symbols-rounded">logout</span>
+                        </button>
+                    </div>
+
+                    <!-- Employees Tab -->
+                    <div class="tab-content" id="tab-employees">
+                        <div class="grid">
+                            <div class="card">
+                                <div class="card-header">
+                                    <div class="card-title">Employee Management</div>
+                                    <button class="primary" id="showAddEmployeeBtn">
+                                        <span class="material-symbols-rounded">add</span> New Employee
+                                    </button>
+                                </div>
+                                <div class="table-container">
+                                    <table class="data-table">
+                                        <thead>
+                                            <tr>
+                                                <th>Photo</th>
+                                                <th>Name</th>
+                                                <th>ID</th>
+                                                <th>Actions</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="employeeList">
+                                            <!-- Populated via JS -->
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+
+                            <!-- Add Employee Form -->
+                            <div class="card" id="addEmployeeForm" hidden>
+                                <div class="card-header">
+                                    <div class="card-title">Add Employee</div>
+                                    <button class="ghost" id="cancelAddEmployeeBtn">Cancel</button>
+                                </div>
+                                <div class="card-body">
+                                    <div class="field">
+                                        <label class="field-label">Employee ID</label>
+                                        <div class="input-group">
+                                            <input type="text" id="newEmployeeId" placeholder="e.g. EMP001" />
+                                        </div>
+                                    </div>
+                                    <div class="field">
+                                        <label class="field-label">First Name</label>
+                                        <div class="input-group">
+                                            <input type="text" id="newFirstName" placeholder="John" />
+                                        </div>
+                                    </div>
+                                    <div class="field">
+                                        <label class="field-label">Last Name</label>
+                                        <div class="input-group">
+                                            <input type="text" id="newLastName" placeholder="Doe" />
+                                        </div>
+                                    </div>
+
+                                    <div class="field">
+                                        <label class="field-label">Authentication Method</label>
+                                        <div class="input-group" style="display:flex; gap:1rem; padding: 0.5rem 0;">
+                                            <label style="display:flex; align-items:center; gap:0.5rem; cursor:pointer">
+                                                <input type="radio" name="authMethod" value="face" checked>
+                                                <span class="material-symbols-rounded">face</span> Face ID
+                                            </label>
+                                            <label style="display:flex; align-items:center; gap:0.5rem; cursor:pointer">
+                                                <input type="radio" name="authMethod" value="fingerprint">
+                                                <span class="material-symbols-rounded">fingerprint</span> Fingerprint
+                                            </label>
+                                        </div>
+                                    </div>
+
+                                    <!-- Face Section -->
+                                    <div class="panel active" id="faceEnrollSection">
+                                        <div class="panel-title">Photo Capture</div>
+                                        <div class="camera-frame">
+                                            <video id="adminCamera" autoplay playsinline muted></video>
+                                            <canvas id="adminSnapshot"></canvas>
+                                        </div>
+                                        <div class="panel-actions">
+                                            <button class="secondary" id="startAdminCameraBtn">Start Camera</button>
+                                            <button class="secondary" id="captureAdminFaceBtn">Capture</button>
+                                            <button class="secondary" id="uploadAdminPhotoBtn">Upload Photo</button>
+                                            <input type="file" id="adminUploadPhoto" accept="image/*" hidden />
+                                        </div>
+                                        <div class="panel-text" id="adminFaceHint">Capture or upload a clear photo for
+                                            profile & verification.</div>
+                                    </div>
+
+                                    <!-- Fingerprint Section -->
+                                    <div class="panel" id="fingerprintEnrollSection" hidden>
+                                        <div class="panel-title">Fingerprint Registration</div>
+
+                                        <div style="text-align:center; padding: 2rem 1rem;">
+                                            <!-- Initial State / Icon -->
+                                            <div id="fpIconContainer"
+                                                style="color: var(--text-muted); margin-bottom: 1rem;">
+                                                <span class="material-symbols-rounded"
+                                                    style="font-size: 80px; display:block">fingerprint</span>
+                                            </div>
+
+                                            <!-- Loader (Hidden by default) -->
+                                            <div id="fpLoader" class="loader" hidden></div>
+
+                                            <!-- Success Icon (Hidden by default) -->
+                                            <div id="fpSuccess" hidden>
+                                                <span class="material-symbols-rounded success-icon">check_circle</span>
+                                            </div>
+
+                                            <div id="fingerprintStatus"
+                                                style="font-size: 1.1rem; font-weight: 500; margin-bottom: 0.5rem; color: var(--text)">
+                                                Ready to Enroll
+                                            </div>
+                                            <p id="fingerprintHint" style="color:var(--text-muted); font-size: 0.9rem;">
+                                                Click "Create Employee" to start the scanning process.
+                                            </p>
+                                        </div>
+                                    </div>
+
+                                    <button class="primary" id="saveEmployeeBtn">Create Employee</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Attendance Tab -->
+                    <div class="tab-content" id="tab-attendance" hidden>
+                        <div class="card">
+                            <div class="card-header">
+                                <div class="card-title">Daily Attendance</div>
+                                <input type="date" id="attendanceDate" class="date-input" />
+                            </div>
+                            <div class="table-container">
+                                <table class="data-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Employee</th>
+                                            <th>Time In</th>
+                                            <th>Time Out</th>
+                                            <th>Method</th>
+                                            <th>Hours Worked</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="attendanceList">
+                                        <!-- JS -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Stats Tab -->
+                    <div class="tab-content" id="tab-stats" hidden>
+                        <div class="card">
+                            <div class="card-header">
+                                <div class="card-title">Hours Worked</div>
+                                <select id="statsTimeFrame" class="select-input">
+                                    <option value="day">Today</option>
+                                    <option value="week" selected>Last 7 Days</option>
+                                    <option value="month">Last Month</option>
+                                    <option value="all">All Time</option>
+                                </select>
+                            </div>
+                            <div class="table-container">
+                                <table class="data-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Employee</th>
+                                            <th>Total Shifts</th>
+                                            <th>Total Hours</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="statsList"></tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Admins Tab -->
+                    <div class="tab-content" id="tab-admins" hidden>
+                        <div class="card">
+                            <div class="card-header">
+                                <div class="card-title">Admin Accounts</div>
+                            </div>
+                            <div class="card-body">
+                                <div class="field">
+                                    <label class="field-label">New Admin Username</label>
+                                    <div class="input-group">
+                                        <input type="text" id="newAdminUsername" />
+                                    </div>
+                                </div>
+                                <div class="field">
+                                    <label class="field-label">Password</label>
+                                    <div class="input-group">
+                                        <input type="password" id="newAdminPassword" />
+                                    </div>
+                                </div>
+                                <button class="primary" id="createAdminBtn">Create Admin</button>
+                                <div class="panel panel-success" id="adminSuccessPanel">
+                                    <div class="panel-text" id="adminSuccessText"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@simplewebauthn/browser@9.0.1/dist/bundle/index.umd.min.js"></script>
+    <script src="admin.js" defer></script>
+</body>
+
+</html>
