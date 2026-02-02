@@ -308,6 +308,19 @@ async function fetchJson(url, options = {}) {
   return data;
 }
 
+// Loader Helpers
+function showBtnLoading(btn) {
+  if (!btn) return;
+  btn.classList.add('btn-loading');
+  btn.disabled = true;
+}
+
+function hideBtnLoading(btn) {
+  if (!btn) return;
+  btn.classList.remove('btn-loading');
+  btn.disabled = false;
+}
+
 async function checkStatus() {
   clearError();
   hideResult();
@@ -317,6 +330,8 @@ async function checkStatus() {
     showError('Enter an employee ID to continue.');
     return;
   }
+
+  showBtnLoading(checkStatusButton);
 
   state.employeeId = employeeId;
   state.faceVerified = false;
@@ -341,6 +356,200 @@ async function checkStatus() {
     } else {
       showError(error.message);
     }
+  } finally {
+    hideBtnLoading(checkStatusButton);
+  }
+}
+
+// ... existing code ...
+
+async function handleFingerprintEnrollment() {
+  clearError();
+  if (!state.employeeId) {
+    showError('Enter an employee ID before enrolling.');
+    return;
+  }
+  if (!window.PublicKeyCredential) {
+    showError('Fingerprint authentication is not supported in this browser.');
+    return;
+  }
+  if (!window.SimpleWebAuthnBrowser) {
+    showError('Fingerprint library failed to load.');
+    return;
+  }
+
+  showBtnLoading(enrollFingerprintButton);
+  try {
+    logInfo('Starting fingerprint enrollment', { employeeId: state.employeeId });
+    const { options } = await fetchJson('/api/webauthn/register/options', {
+      method: 'POST',
+      body: JSON.stringify({ employeeId: state.employeeId }),
+    });
+    const attestation = await SimpleWebAuthnBrowser.startRegistration(options);
+    await fetchJson('/api/webauthn/register/verify', {
+      method: 'POST',
+      body: JSON.stringify({ employeeId: state.employeeId, attestation }),
+    });
+    fingerprintText.textContent = 'Fingerprint enrolled. You can now scan to authenticate.';
+    logInfo('Fingerprint enrollment complete', { employeeId: state.employeeId });
+  } catch (error) {
+    logError('Fingerprint enrollment failed', { employeeId: state.employeeId, error: error.message });
+    showError(error.message || 'Fingerprint enrollment failed.');
+  } finally {
+    hideBtnLoading(enrollFingerprintButton);
+  }
+}
+
+async function getFingerprintAssertion() {
+  // ... (keep existing)
+  if (!window.PublicKeyCredential) {
+    throw new Error('Fingerprint authentication is not supported in this browser.');
+  }
+  if (!window.SimpleWebAuthnBrowser) {
+    throw new Error('Fingerprint library failed to load.');
+  }
+  const response = await fetchJson('/api/webauthn/authenticate/options', {
+    method: 'POST',
+    body: JSON.stringify({ employeeId: state.employeeId }),
+  });
+
+  if (response.needsEnrollment) {
+    throw new Error('Fingerprint not enrolled for this employee.');
+  }
+
+  logInfo('Starting fingerprint authentication', { employeeId: state.employeeId });
+  return SimpleWebAuthnBrowser.startAuthentication(response.options);
+}
+
+async function handleFingerprintScan() {
+  clearError();
+  if (!state.employeeId) {
+    showError('Enter an employee ID before scanning.');
+    return null;
+  }
+
+  showBtnLoading(scanFingerprintButton);
+  try {
+    const assertion = await getFingerprintAssertion();
+    fingerprintText.textContent = 'Fingerprint verified. Proceed with clock action.';
+    logInfo('Fingerprint verified', { employeeId: state.employeeId });
+    return assertion;
+  } catch (error) {
+    logError('Fingerprint verification failed', { employeeId: state.employeeId, error: error.message });
+    showError(error.message || 'Fingerprint verification failed.');
+    return null;
+  } finally {
+    hideBtnLoading(scanFingerprintButton);
+  }
+}
+
+async function submitClockAction() {
+  clearError();
+  if (!state.employeeId) {
+    showError('Enter an employee ID to continue.');
+    return;
+  }
+  if (!state.method) {
+    showError('Select a verification method.');
+    return;
+  }
+
+  showBtnLoading(actionButton);
+
+  const action = state.status === 'clocked_in' ? 'clock-out' : 'clock-in';
+  const methodUsed = state.method;
+  logInfo('Submitting clock action', { employeeId: state.employeeId, action, method: methodUsed });
+
+  try {
+    let payload = {
+      employeeId: state.employeeId,
+      method: state.method,
+    };
+
+    if (state.method === 'face') {
+      if (!state.faceVerified) {
+        showError('Please capture and verify your face before clocking in/out.');
+        return;
+      }
+      const image = state.faceImage || captureFace();
+      if (!image) return;
+      const descriptor = state.faceDescriptor || (await getFaceDescriptor());
+      if (!descriptor) return;
+      payload = { ...payload, image, descriptor };
+    }
+
+    if (state.method === 'fingerprint') {
+      const assertion = await getFingerprintAssertion();
+      payload = { ...payload, webauthn: assertion };
+    }
+
+    const result = await fetchJson(`/api/${action}`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+
+    const { time, date } = formatDateTime(result.timestamp);
+    showResult({
+      title: action === 'clock-in' ? 'Clocked In' : 'Clocked Out',
+      message: result.message,
+      time,
+      date,
+      hours: result.hoursWorked || '00:00',
+    });
+
+    if (action === 'clock-in') {
+      state.status = 'clocked_in';
+      state.clockInAt = result.clockInAt;
+      state.methodLocked = state.method;
+      startTimer(state.clockInAt);
+      logInfo('Clock-in success', { employeeId: state.employeeId, method: methodUsed });
+    } else {
+      state.status = 'not_clocked_in';
+      state.clockInAt = null;
+      state.methodLocked = null;
+      state.method = null;
+      stopTimer();
+      logInfo('Clock-out success', { employeeId: state.employeeId, method: methodUsed });
+    }
+
+    state.faceImage = null;
+    state.faceDescriptor = null;
+    state.faceVerified = false;
+    updateUI();
+  } catch (error) {
+    logError('Clock action failed', { employeeId: state.employeeId, action, error: error.message });
+    showError(error.message);
+  } finally {
+    hideBtnLoading(actionButton);
+  }
+}
+
+// ... existing code ...
+
+async function handleFaceEnroll() {
+  clearError();
+  if (!state.employeeId) {
+    showError('Enter an employee ID before enrolling a face template.');
+    return;
+  }
+  const image = state.faceImage || captureFace();
+  if (!image) return;
+
+  showBtnLoading(enrollFaceButton);
+  try {
+    const descriptor = state.faceDescriptor || (await getFaceDescriptor());
+    if (!descriptor) return;
+    logInfo('Submitting face enrollment', { employeeId: state.employeeId });
+    await fetchJson('/api/face/enroll', {
+      method: 'POST',
+      body: JSON.stringify({ employeeId: state.employeeId, image, descriptor }),
+    });
+    faceHint.textContent = 'Face enrolled successfully. You can now clock in with face recognition.';
+    logInfo('Face enrollment success', { employeeId: state.employeeId });
+  } catch (error) {
+    showError(error.message || 'Face enrollment failed.');
+  } finally {
+    hideBtnLoading(enrollFaceButton);
   }
 }
 

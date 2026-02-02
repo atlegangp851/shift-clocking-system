@@ -66,7 +66,7 @@ function logError(message, meta) {
 app.use(cors({
   origin: [
     'https://shift-clocking-system.netlify.app',
-    'http://localhost:3000',
+    'https://shift-clocking-system.onrender.com',
     'http://localhost:5500',
     'http://127.0.0.1:5500',
     'http://127.0.0.1:3000'
@@ -599,11 +599,12 @@ app.post('/api/admin/register', async (req, res) => {
     logInfo('Admin created', { username });
     return res.json({ message: 'Admin created.' });
   } catch (error) {
-    logError('Admin register error', { username, error: error.message });
+    logError('Admin register error full object', error);
+    logError('Admin register error', { username, error: error.message, stack: error.stack, code: error.code });
     if (error.code === '23505') { // Unique violation
       return sendError(res, 409, 'USERNAME_TAKEN', 'Username already exists.');
     }
-    return sendError(res, 500, 'REGISTER_ERROR', 'Unable to create admin.');
+    return sendError(res, 500, 'REGISTER_ERROR', `Unable to create admin. ${error.message || 'Unknown error'}`);
   }
 });
 

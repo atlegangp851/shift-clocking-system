@@ -260,6 +260,41 @@ async function fetchJson(url, options = {}) {
 
 // Admin Auth
 
+// Loader Helpers
+function showBtnLoading(btn) {
+    btn.classList.add('btn-loading');
+    btn.disabled = true;
+}
+
+function hideBtnLoading(btn) {
+    btn.classList.remove('btn-loading');
+    btn.disabled = false;
+}
+
+function showSectionLoader(container) {
+    if (!container) return;
+    // Check if already has loader
+    if (container.querySelector('.loading-overlay')) return;
+
+    const loader = document.createElement('div');
+    loader.className = 'loading-overlay';
+    loader.innerHTML = '<div class="loader-spinner"></div>';
+
+    // Ensure container is relative so overlay works
+    const style = window.getComputedStyle(container);
+    if (style.position === 'static') {
+        container.classList.add('relative-container'); // You might need to add this class or just set style
+        container.style.position = 'relative';
+    }
+    container.appendChild(loader);
+}
+
+function hideSectionLoader(container) {
+    if (!container) return;
+    const loader = container.querySelector('.loading-overlay');
+    if (loader) loader.remove();
+}
+
 async function handleAdminLogin() {
     const username = adminUsernameInput.value.trim();
     const password = adminPasswordInput.value.trim();
@@ -270,6 +305,7 @@ async function handleAdminLogin() {
         return;
     }
 
+    showBtnLoading(adminLoginBtn);
     try {
         logInfo('Admin login attempt', { username });
         const data = await fetchJson('/api/admin/login', {
@@ -294,6 +330,8 @@ async function handleAdminLogin() {
         logError('Admin login failed', { username, error: error.message });
         adminLoginErrorText.textContent = error.message;
         setPanelActive(adminLoginError, true);
+    } finally {
+        hideBtnLoading(adminLoginBtn);
     }
 }
 
@@ -338,12 +376,14 @@ function loadAdminTab(tabName) {
 // Employee Management
 
 async function fetchEmployees() {
+    employeeListBody.innerHTML = '<tr><td colspan="4"><div class="table-loader"><div class="loader-spinner"></div></div></td></tr>';
     try {
         const employees = await fetchJson('/api/admin/employees');
         renderEmployees(employees);
         logInfo('Employees loaded', { count: employees.length });
     } catch (error) {
         logError('Failed to fetch employees', { error: error.message });
+        employeeListBody.innerHTML = `<tr><td colspan="4" style="text-align:center;color:var(--accent)">Failed to load data.</td></tr>`;
     }
 }
 
@@ -562,6 +602,7 @@ async function handleSaveEmployee() {
         return;
     }
 
+    showBtnLoading(saveEmployeeBtn);
     try {
         logInfo('Creating employee record', { employeeId: id, firstName: first, lastName: last });
 
@@ -623,6 +664,8 @@ async function handleSaveEmployee() {
     } catch (err) {
         logError('Create employee failed', { employeeId: id, error: err.message });
         alert(err.message);
+    } finally {
+        hideBtnLoading(saveEmployeeBtn);
     }
 }
 
@@ -630,12 +673,14 @@ async function handleSaveEmployee() {
 
 async function fetchAttendance() {
     const date = attendanceDate.value;
+    attendanceList.innerHTML = '<tr><td colspan="5"><div class="table-loader"><div class="loader-spinner"></div></div></td></tr>';
     try {
         const data = await fetchJson(`/api/admin/attendance?date=${date}`);
         renderAttendance(data);
         logInfo('Attendance loaded', { date, count: data.length });
     } catch (err) {
         logError('Fetch attendance failed', { date, error: err.message });
+        attendanceList.innerHTML = `<tr><td colspan="5" style="text-align:center;color:var(--accent)">Failed to load data.</td></tr>`;
     }
 }
 
@@ -679,12 +724,14 @@ function renderAttendance(data) {
 
 async function fetchStats() {
     const frame = statsTimeFrame.value;
+    statsList.innerHTML = '<tr><td colspan="3"><div class="table-loader"><div class="loader-spinner"></div></div></td></tr>';
     try {
         const data = await fetchJson(`/api/admin/stats?timeFrame=${frame}`);
         renderStats(data);
         logInfo('Stats loaded', { timeFrame: frame, count: data.length });
     } catch (err) {
         logError('Fetch stats failed', { timeFrame: frame, error: err.message });
+        statsList.innerHTML = `<tr><td colspan="3" style="text-align:center;color:var(--accent)">Failed to load stats.</td></tr>`;
     }
 }
 
@@ -712,6 +759,7 @@ async function handleCreateAdmin() {
     const p = newAdminPassword.value.trim();
     if (!u || !p) return;
 
+    showBtnLoading(createAdminBtn);
     try {
         logInfo('Creating admin', { username: u });
         await fetchJson('/api/admin/register', {
@@ -727,6 +775,8 @@ async function handleCreateAdmin() {
     } catch (err) {
         logError('Create admin failed', { username: u, error: err.message });
         alert(err.message);
+    } finally {
+        hideBtnLoading(createAdminBtn);
     }
 }
 

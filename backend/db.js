@@ -1,165 +1,113 @@
+const { Pool } = require('pg');
 const fs = require('fs');
 const path = require('path');
-const initSqlJs = require('sql.js');
+require('dotenv').config();
 
-const dbPath = path.join(__dirname, 'database.sqlite');
-let db = null;
-let SQL = null;
+// Parse and clean connection string
+let connectionString = process.env.DATABASE_URL;
+if (connectionString && connectionString.includes('channel_binding=require')) {
+  connectionString = connectionString.replace('channel_binding=require', '');
+}
+
+const pool = new Pool({
+  connectionString,
+  ssl: {
+    rejectUnauthorized: false
+  },
+  connectionTimeoutMillis: 60000, // 60 seconds (increased from 10s)
+  idleTimeoutMillis: 30000,
+});
+
+pool.on('error', (err, client) => {
+  console.error('Unexpected error on idle client', err);
+  process.exit(-1);
+});
+
+async function query(text, params) {
+  const start = Date.now();
+  try {
+    const res = await pool.query(text, params);
+    const duration = Date.now() - start;
+    // console.log('executed query', { text, duration, rows: res.rowCount });
+    return res;
+  } catch (err) {
+    console.error('[db] Query failed', { text, params, error: err.message });
+    throw err;
+  }
+}
 
 async function initDb() {
-  SQL = await initSqlJs();
-
-  if (fs.existsSync(dbPath)) {
-    const filebuffer = fs.readFileSync(dbPath);
-    db = new SQL.Database(filebuffer);
-  } else {
-    db = new SQL.Database();
-    // Initialize Schema
-    const schemaPath = path.join(__dirname, 'db', 'schema_sqlite.sql');
-    const schema = fs.readFileSync(schemaPath, 'utf8');
-    db.run(schema);
-    saveDb();
-  }
-}
-
-function saveDb() {
-  const data = db.export();
-  const buffer = Buffer.from(data);
-  fs.writeFileSync(dbPath, buffer);
-}
-
-function normalizeParams(params = []) {
-  return params.map((value) => (value === undefined ? null : value));
-}
-
-// Helper to confirm DB is ready
-function checkDb() {
-  if (!db) throw new Error('Database not initialized');
-}
-
-// Helper to map sql.js results to objects
-function mapResults(res) {
-  if (!res || res.length === 0) return [];
-  const columns = res[0].columns;
-  const values = res[0].values;
-  return values.map(row => {
-    const obj = {};
-    columns.forEach((col, i) => {
-      obj[col] = row[i];
-    });
-    return obj;
-  });
-}
-
-// Emulate db.run
-function run(sql, params = []) {
-  checkDb();
-  db.run(sql, normalizeParams(params));
-
-  // Capture lastID and changes before doing anything else
-  let id = null;
-  let changes = 0;
   try {
-    const res = db.exec('SELECT last_insert_rowid(), changes()');
-    if (res && res[0] && res[0].values && res[0].values[0]) {
-      id = res[0].values[0][0];
-      changes = res[0].values[0][1];
-    }
-  } catch (error) {
-    id = null;
-    changes = 1; // Assume change on error to be safe and save
-  }
+    const client = await pool.connect();
+    console.log('[db] Connected to PostgreSQL');
 
-  if (changes > 0) {
-    saveDb();
-  }
+    // Always run schema to ensure all tables exist (uses IF NOT EXISTS)
+    console.log('[db] Initializing schema...');
+    const schemaPath = path.join(__dirname, 'db', 'schema_postgres.sql');
+    const schema = fs.readFileSync(schemaPath, 'utf8');
+    await client.query(schema);
+    console.log('[db] Schema initialized');
 
-  return { lastID: id, changes };
-}
-
-// Emulate db.get
-function get(sql, params = []) {
-  checkDb();
-  // db.exec returns an array of result sets. WE want prepared statement for safety usually, 
-  // but db.run/exec in sql.js handles binding?
-  // db.run is for no-result, db.exec is for results but string concat?
-  // Best to use statement for getting values safely
-  const stmt = db.prepare(sql);
-  stmt.bind(normalizeParams(params));
-  const hasRow = stmt.step();
-  let result = null;
-  if (hasRow) {
-    result = stmt.getAsObject();
+    client.release();
+  } catch (err) {
+    console.error('[db] Failed to initialize database', err);
+    process.exit(1);
   }
-  stmt.free();
-  return result;
-}
-
-// Emulate db.all
-function all(sql, params = []) {
-  checkDb();
-  const stmt = db.prepare(sql);
-  stmt.bind(normalizeParams(params));
-  const results = [];
-  while (stmt.step()) {
-    results.push(stmt.getAsObject());
-  }
-  stmt.free();
-  return results;
 }
 
 async function ensureEmployee(employeeId) {
-  run(
-    'INSERT OR IGNORE INTO employees (employee_id) VALUES (?)',
+  await query(
+    'INSERT INTO employees (employee_id) VALUES ($1) ON CONFLICT (employee_id) DO NOTHING',
     [employeeId]
   );
 }
 
 async function getEmployee(employeeId) {
-  return get('SELECT * FROM employees WHERE employee_id = ?', [employeeId]);
+  const res = await query('SELECT * FROM employees WHERE employee_id = $1', [employeeId]);
+  return res.rows[0] || null;
 }
 
 async function getOpenShift(employeeId) {
-  return get(
+  const res = await query(
     `SELECT * FROM shift_entries
-     WHERE employee_id = ? AND clock_out IS NULL
+     WHERE employee_id = $1 AND clock_out IS NULL
      ORDER BY clock_in DESC
      LIMIT 1`,
     [employeeId]
   );
+  return res.rows[0] || null;
 }
 
 async function createShift({ employeeId, method, clockInPhotoUrl, clockInPhotoPublicId }) {
   const now = new Date().toISOString();
-  const result = run(
+  const res = await query(
     `INSERT INTO shift_entries
       (employee_id, method, clock_in, clock_in_photo_url, clock_in_photo_public_id)
-     VALUES (?, ?, ?, ?, ?)`,
+     VALUES ($1, $2, $3, $4, $5)
+     RETURNING *`,
     [employeeId, method, now, clockInPhotoUrl, clockInPhotoPublicId]
   );
-  if (result.lastID) {
-    const row = get('SELECT * FROM shift_entries WHERE id = ?', [result.lastID]);
-    if (row) return row;
-  }
-  return getOpenShift(employeeId);
+  return res.rows[0];
 }
 
 async function closeShift({ shiftId, clockOutPhotoUrl, clockOutPhotoPublicId }) {
   const now = new Date().toISOString();
-  run(
+  const res = await query(
     `UPDATE shift_entries
-     SET clock_out = ?,
-         clock_out_photo_url = ?,
-         clock_out_photo_public_id = ?,
-         updated_at = ?
-     WHERE id = ?`,
+     SET clock_out = $1,
+         clock_out_photo_url = $2,
+         clock_out_photo_public_id = $3,
+         updated_at = $4
+     WHERE id = $5
+     RETURNING *`,
     [now, clockOutPhotoUrl, clockOutPhotoPublicId, now, shiftId]
   );
-  return get('SELECT * FROM shift_entries WHERE id = ?', [shiftId]);
+  return res.rows[0];
 }
 
 async function getFaceTemplate(employeeId) {
-  const row = get('SELECT * FROM face_templates WHERE employee_id = ?', [employeeId]);
+  const res = await query('SELECT * FROM face_templates WHERE employee_id = $1', [employeeId]);
+  let row = res.rows[0];
   if (row && row.descriptor) {
     try { row.descriptor = JSON.parse(row.descriptor); } catch (e) { }
   }
@@ -168,158 +116,166 @@ async function getFaceTemplate(employeeId) {
 
 async function upsertFaceTemplate({ employeeId, descriptor, imageUrl, imagePublicId }) {
   const descriptorJson = JSON.stringify(descriptor);
-
   const now = new Date().toISOString();
-  run(
+
+  await query(
     `INSERT INTO face_templates (employee_id, descriptor, image_url, image_public_id, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?)
+     VALUES ($1, $2, $3, $4, $5, $6)
      ON CONFLICT(employee_id) DO UPDATE SET
-       descriptor = excluded.descriptor,
-       image_url = excluded.image_url,
-       image_public_id = excluded.image_public_id,
-       updated_at = ?`,
-    [employeeId, descriptorJson, imageUrl, imagePublicId, now, now, now]
+       descriptor = EXCLUDED.descriptor,
+       image_url = EXCLUDED.image_url,
+       image_public_id = EXCLUDED.image_public_id,
+       updated_at = EXCLUDED.updated_at`,
+    [employeeId, descriptorJson, imageUrl, imagePublicId, now, now]
   );
+
   return getFaceTemplate(employeeId);
 }
 
 async function saveChallenge({ employeeId, type, challenge }) {
-  run(
+  await query(
     `INSERT INTO webauthn_challenges (employee_id, type, challenge, created_at)
-     VALUES (?, ?, ?, datetime('now'))
+     VALUES ($1, $2, $3, NOW())
      ON CONFLICT(employee_id, type) DO UPDATE SET
-       challenge = excluded.challenge,
-       created_at = datetime('now')`,
+       challenge = EXCLUDED.challenge,
+       created_at = NOW()`,
     [employeeId, type, challenge]
   );
 }
 
 async function getChallenge({ employeeId, type }) {
-  return get(
-    'SELECT challenge, created_at FROM webauthn_challenges WHERE employee_id = ? AND type = ?',
+  const res = await query(
+    'SELECT challenge, created_at FROM webauthn_challenges WHERE employee_id = $1 AND type = $2',
     [employeeId, type]
   );
+  return res.rows[0] || null;
 }
 
 async function getCredentials(employeeId) {
-  const rows = all(
-    'SELECT * FROM webauthn_credentials WHERE employee_id = ? ORDER BY created_at DESC',
+  const res = await query(
+    'SELECT * FROM webauthn_credentials WHERE employee_id = $1 ORDER BY created_at DESC',
     [employeeId]
   );
-  return rows.map(r => {
+  return res.rows.map(r => {
     try { r.transports = JSON.parse(r.transports || '[]'); } catch (e) { }
+    // Ensure counter is a number/string handled correctly (Postgres BIGINT comes as string)
+    r.counter = Number(r.counter);
     return r;
   });
 }
 
 async function getCredentialById(credentialId) {
-  const row = get(
-    'SELECT * FROM webauthn_credentials WHERE credential_id = ?',
+  const res = await query(
+    'SELECT * FROM webauthn_credentials WHERE credential_id = $1',
     [credentialId]
   );
+  const row = res.rows[0];
   if (row) {
     try { row.transports = JSON.parse(row.transports || '[]'); } catch (e) { }
+    row.counter = Number(row.counter);
   }
   return row || null;
 }
 
 async function saveCredential({ employeeId, credentialId, publicKey, counter, transports }) {
   const transportsJson = JSON.stringify(transports);
-  run(
+  await query(
     `INSERT INTO webauthn_credentials
       (employee_id, credential_id, public_key, counter, transports, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+     VALUES ($1, $2, $3, $4, $5, NOW(), NOW())
      ON CONFLICT(credential_id) DO UPDATE SET
-       public_key = excluded.public_key,
-       counter = excluded.counter,
-       transports = excluded.transports,
-       updated_at = datetime('now')`,
+       public_key = EXCLUDED.public_key,
+       counter = EXCLUDED.counter,
+       transports = EXCLUDED.transports,
+       updated_at = NOW()`,
     [employeeId, credentialId, publicKey, counter, transportsJson]
   );
   return getCredentialById(credentialId);
 }
 
 async function updateCredentialCounter(credentialId, counter) {
-  run(
-    `UPDATE webauthn_credentials SET counter = ?, updated_at = datetime('now') WHERE credential_id = ?`,
+  await query(
+    `UPDATE webauthn_credentials SET counter = $1, updated_at = NOW() WHERE credential_id = $2`,
     [counter, credentialId]
   );
 }
 
-// Admin Functions
-
 async function createAdmin({ username, passwordHash }) {
-  run(
-    'INSERT INTO admins (username, password_hash) VALUES (?, ?)',
+  const res = await query(
+    'INSERT INTO admins (username, password_hash) VALUES ($1, $2) RETURNING id, username, created_at',
     [username, passwordHash]
   );
-  return get('SELECT id, username, created_at FROM admins WHERE username = ?', [username]);
+  return res.rows[0];
 }
 
 async function getAdmin(username) {
-  return get('SELECT * FROM admins WHERE username = ?', [username]);
+  const res = await query('SELECT * FROM admins WHERE username = $1', [username]);
+  return res.rows[0] || null;
 }
 
 async function getAllEmployees() {
-  return all('SELECT * FROM employees ORDER BY created_at DESC');
+  const res = await query('SELECT * FROM employees ORDER BY created_at DESC');
+  return res.rows;
 }
 
 async function createEmployee({ employeeId, firstName, lastName, photoUrl, photoPublicId }) {
-  run(
+  await query(
     `INSERT INTO employees (employee_id, first_name, last_name, photo_url, photo_public_id, created_at)
-     VALUES (?, ?, ?, ?, ?, datetime('now'))
+     VALUES ($1, $2, $3, $4, $5, NOW())
      ON CONFLICT(employee_id) DO UPDATE SET
-       first_name = excluded.first_name,
-       last_name = excluded.last_name,
-       photo_url = coalesce(excluded.photo_url, employees.photo_url),
-       photo_public_id = coalesce(excluded.photo_public_id, employees.photo_public_id)`,
+       first_name = EXCLUDED.first_name,
+       last_name = EXCLUDED.last_name,
+       photo_url = COALESCE(EXCLUDED.photo_url, employees.photo_url),
+       photo_public_id = COALESCE(EXCLUDED.photo_public_id, employees.photo_public_id)`,
     [employeeId, firstName, lastName, photoUrl, photoPublicId]
   );
-  return get('SELECT * FROM employees WHERE employee_id = ?', [employeeId]);
+  // Fetch fresh to return
+  return getEmployee(employeeId);
 }
 
 async function deleteEmployee(employeeId) {
-  run('DELETE FROM employees WHERE employee_id = ?', [employeeId]);
+  await query('DELETE FROM employees WHERE employee_id = $1', [employeeId]);
 }
 
 async function getDailyAttendance(dateString) {
+  // Postgres Date cast
   const filterDate = dateString || new Date().toISOString().split('T')[0];
-
-  return all(
+  const res = await query(
     `SELECT s.*, e.first_name, e.last_name, e.photo_url as employee_photo
      FROM shift_entries s
      JOIN employees e ON s.employee_id = e.employee_id
-     WHERE strftime('%Y-%m-%d', s.clock_in) = ?
+     WHERE s.clock_in::date = $1::date
      ORDER BY s.clock_in DESC`,
     [filterDate]
   );
+  return res.rows;
 }
 
 async function getStats(timeFrame) {
-  let dateModifier = '-30 days';
-  if (timeFrame === 'week') dateModifier = '-7 days';
-  if (timeFrame === 'day') dateModifier = '-1 day';
-  if (timeFrame === 'month') dateModifier = '-1 month';
-  if (timeFrame === 'all') dateModifier = '-100 years';
+  let dateModifier = '30 days';
+  if (timeFrame === 'week') dateModifier = '7 days';
+  if (timeFrame === 'day') dateModifier = '1 day';
+  if (timeFrame === 'month') dateModifier = '1 month';
+  if (timeFrame === 'all') dateModifier = '100 years'; // Approximate 'all time'
 
-  return all(
+  const res = await query(
     `SELECT 
        e.employee_id, 
        e.first_name, 
        e.last_name, 
        COUNT(s.id) as shifts_count, 
-       COALESCE(SUM((unixepoch(COALESCE(s.clock_out, datetime('now'))) - unixepoch(s.clock_in)) / 3600.0), 0) as total_hours
+       COALESCE(SUM(EXTRACT(EPOCH FROM (COALESCE(s.clock_out, NOW()) - s.clock_in)) / 3600.0), 0) as total_hours
      FROM employees e
      LEFT JOIN shift_entries s ON e.employee_id = s.employee_id 
-     AND s.clock_in >= datetime('now', ?)
+     AND s.clock_in >= (NOW() - $1::interval)
      GROUP BY e.employee_id, e.first_name, e.last_name
      ORDER BY total_hours DESC`,
     [dateModifier]
   );
+  return res.rows;
 }
 
 module.exports = {
-  // export db if needed, but methods are wrapped
   initDb,
   ensureEmployee,
   getEmployee,
