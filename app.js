@@ -1,4 +1,4 @@
-const API_BASE = 'http://localhost:3000';
+const API_BASE = 'https://shift-clocking-system.onrender.com';
 
 const LOG_PREFIX = '[frontend]';
 function logInfo(message, meta) {
@@ -794,10 +794,65 @@ async function handleFaceEnroll() {
     faceHint.textContent = 'Face enrolled successfully. You can now clock in with face recognition.';
     logInfo('Face enrollment success', { employeeId: state.employeeId });
   } catch (error) {
-    logError('Face enrollment failed', { employeeId: state.employeeId, error: error.message });
     showError(error.message || 'Face enrollment failed.');
   }
 }
+
+// Server Wakeup Logic
+async function waitForServer() {
+  const loader = document.getElementById('server-loader');
+  if (!loader) return;
+
+  const maxRetries = 60; // 1 minute roughly
+  let retries = 0;
+
+  const checkHealth = async () => {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 2000);
+
+      const res = await fetch(`${API_BASE}/api/health`, {
+        method: 'GET',
+        signal: controller.signal
+      });
+      clearTimeout(timeoutId);
+
+      if (res.ok) {
+        logInfo('Server is ready');
+        loader.classList.add('hidden');
+        setTimeout(() => loader.remove(), 600); // Remove from DOM after fade out
+        return true;
+      }
+    } catch (e) {
+      // ignore
+    }
+    return false;
+  };
+
+  // Immediate check
+  if (await checkHealth()) return;
+
+  // Poll
+  const interval = setInterval(async () => {
+    retries++;
+    const ready = await checkHealth();
+    if (ready || retries > maxRetries) {
+      clearInterval(interval);
+      if (!ready) {
+        logError('Server wakeup timeout');
+        // Optional: show error message in loader
+        loader.innerHTML = `
+          <div style="text-align:center; color: var(--accent)">
+            <h2>Server Timeout</h2>
+            <p>Please refresh the page to try again.</p>
+          </div>
+        `;
+      }
+    }
+  }, 1000);
+}
+
+document.addEventListener('DOMContentLoaded', waitForServer);
 
 checkStatusButton.addEventListener('click', checkStatus);
 employeeIdInput.addEventListener('keydown', (event) => {

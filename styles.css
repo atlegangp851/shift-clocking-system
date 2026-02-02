@@ -699,3 +699,44 @@ button:disabled {
 #adminSuccessPanel {
   margin-top: 12px;
 }
+
+/* Server Loader */
+
+#server-loader {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
+  transition: opacity 0.5s ease;
+}
+
+#server-loader.hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+#server-loader h2 {
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: var(--surface-strong);
+}
+
+#server-loader p {
+  color: var(--text-muted);
+  font-size: 1rem;
+}
+
+.loader-spinner {
+  width: 50px;
+  height: 50px;
+  border: 4px solid rgba(15, 118, 110, 0.2);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}

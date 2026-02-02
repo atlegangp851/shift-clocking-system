@@ -8,7 +8,7 @@ const { isoBase64URL } = require('@simplewebauthn/server/helpers');
 
 const rpName = process.env.WEBAUTHN_RP_NAME || 'Shift Clocking System';
 const rpID = process.env.WEBAUTHN_RP_ID || 'localhost';
-const origin = process.env.WEBAUTHN_ORIGIN || 'http://localhost:3000';
+const origin = process.env.WEBAUTHN_ORIGIN || 'https://shift-clocking-system.onrender.com';
 
 function toBase64URL(buffer) {
   return isoBase64URL.fromBuffer(buffer);
