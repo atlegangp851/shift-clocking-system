@@ -320,8 +320,8 @@ app.post('/api/webauthn/register/options', async (req, res) => {
     logInfo('Webauthn registration options created', { employeeId });
     return res.json({ options });
   } catch (error) {
-    logError('Webauthn registration options failed', { employeeId, error: error.message });
-    return sendError(res, 500, 'WEBAUTHN_OPTIONS_ERROR', 'Unable to create registration options.');
+    logError('Webauthn registration options failed', { employeeId, error: error.message, stack: error.stack });
+    return sendError(res, 500, 'WEBAUTHN_OPTIONS_ERROR', `Unable to create registration options: ${error.message}`);
   }
 });
 
