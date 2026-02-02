@@ -63,7 +63,16 @@ function logError(message, meta) {
   }
 }
 
-app.use(cors());
+app.use(cors({
+  origin: [
+    'https://shift-clocking-system.netlify.app',
+    'http://localhost:3000',
+    'http://localhost:5500',
+    'http://127.0.0.1:5500',
+    'http://127.0.0.1:3000'
+  ],
+  credentials: true
+}));
 app.use(express.json({ limit: '10mb' }));
 app.use((req, res, next) => {
   const start = Date.now();
