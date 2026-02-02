@@ -315,7 +315,7 @@ app.post('/api/webauthn/register/options', async (req, res) => {
     }
     logInfo('Employee ensured for webauthn register options', { employeeId });
     const credentials = await getCredentials(employeeId);
-    const options = buildRegistrationOptions({ employeeId, existingCredentials: credentials });
+    const options = await buildRegistrationOptions({ employeeId, existingCredentials: credentials });
     await saveChallenge({ employeeId, type: 'registration', challenge: options.challenge });
     logInfo('Webauthn registration options created', { employeeId });
     return res.json({ options });
@@ -382,7 +382,7 @@ app.post('/api/webauthn/authenticate/options', async (req, res) => {
       return res.json({ needsEnrollment: true });
     }
 
-    const options = buildAuthenticationOptions({ credentials });
+    const options = await buildAuthenticationOptions({ credentials });
     await saveChallenge({ employeeId, type: 'authentication', challenge: options.challenge });
     logInfo('Webauthn authentication options created', { employeeId });
     return res.json({ options });
