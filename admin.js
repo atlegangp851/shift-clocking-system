@@ -604,8 +604,11 @@ async function handleSaveEmployee() {
             document.getElementById('fingerprintStatus').textContent = '';
 
             // Reset to default Face view
-            authMethodRadios[0].checked = true;
-            authMethodRadios[0].dispatchEvent(new Event('change'));
+            const authMethodRadios = document.querySelectorAll('input[name="authMethod"]');
+            if (authMethodRadios.length > 0) {
+                authMethodRadios[0].checked = true;
+                authMethodRadios[0].dispatchEvent(new Event('change'));
+            }
 
             if (adminCameraStream) {
                 adminCameraStream.getTracks().forEach(t => t.stop());
